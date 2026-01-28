@@ -26,7 +26,7 @@ import { MetricsPanel } from './components/MetricsPanel';
 import { DecisionLog } from './components/DecisionLog';
 import { Analytics } from './components/Analytics';
 import { SimulationControls } from './components/SimulationControls';
-import { Snowflake } from 'lucide-react';
+import { Header } from './components/Header';
 
 function App() {
   const [isRunning, setIsRunning] = useState(false);
@@ -379,22 +379,10 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-100 to-blue-50">
-      <header className="bg-white shadow-md border-b-4 border-blue-600">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-3">
-            <Snowflake className="w-8 h-8 text-blue-600" />
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Cold Chain Intelligence OS</h1>
-              <p className="text-sm text-gray-600">
-                Predictive Temperature Management & Dynamic Route Optimization
-              </p>
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+      <Header />
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="container mx-auto px-4 py-8 max-w-7xl">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <div className="lg:col-span-2">
             <MapView
