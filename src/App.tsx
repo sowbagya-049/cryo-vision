@@ -22,6 +22,7 @@ import { fetchCurrentWeather } from './services/weatherService';
 import { geocodeAddress } from './services/geocodingService';
 import { PRODUCT_DATABASE } from './data/productData';
 import { MapView } from './components/MapView';
+import { LiveMap } from './components/LiveMap';
 import { MetricsPanel } from './components/MetricsPanel';
 import { DecisionLog } from './components/DecisionLog';
 import { Analytics } from './components/Analytics';
@@ -385,12 +386,10 @@ function App() {
       <main className="container mx-auto px-4 py-8 max-w-7xl">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <div className="lg:col-span-2">
-            <MapView
-              truckState={truckState}
-              route={currentRoute}
-              warehouse={WAREHOUSE}
-              destination={DESTINATION}
-              coldStorages={COLD_STORAGES}
+            <LiveMap
+              currentPosition={truckState.position}
+              route={currentRoute.path}
+              destination={currentRoute.path[currentRoute.path.length - 1]}
             />
           </div>
           <div>
