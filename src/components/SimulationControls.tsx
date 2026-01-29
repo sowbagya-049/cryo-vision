@@ -1,4 +1,4 @@
-import { TruckStatus } from '../types';
+import { TruckStatus, TrafficLevel } from '../types';
 import { Play, Pause, RotateCcw, Settings } from 'lucide-react';
 
 interface SimulationControlsProps {
@@ -22,6 +22,10 @@ interface SimulationControlsProps {
   onStartLocationChange: (location: string) => void;
   onEndLocationChange: (location: string) => void;
   onSetCustomRoute: () => void;
+  onStartMapSelect?: () => void;
+  onEndMapSelect?: () => void;
+  trafficDensity: TrafficLevel;
+  onTrafficDensityChange: (density: TrafficLevel) => void;
 }
 
 export function SimulationControls({
@@ -45,6 +49,10 @@ export function SimulationControls({
   onStartLocationChange,
   onEndLocationChange,
   onSetCustomRoute,
+  onStartMapSelect,
+  onEndMapSelect,
+  trafficDensity,
+  onTrafficDensityChange,
 }: SimulationControlsProps) {
   const scenarios = [
     { id: 'normal', name: 'Normal Conditions', desc: 'Standard delivery with moderate weather' },
@@ -103,26 +111,44 @@ export function SimulationControls({
               <label className="block text-xs font-medium text-gray-600 mb-1">
                 Start Location
               </label>
-              <input
-                type="text"
-                value={customStartLocation}
-                onChange={(e) => onStartLocationChange(e.target.value)}
-                placeholder="e.g., Los Angeles, CA"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={customStartLocation}
+                  onChange={(e) => onStartLocationChange(e.target.value)}
+                  placeholder="e.g., Los Angeles, CA"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                />
+                <button
+                  onClick={() => onStartMapSelect && onStartMapSelect()}
+                  className="px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors"
+                  title="Click on map to select"
+                >
+                  📍
+                </button>
+              </div>
             </div>
 
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">
                 Destination Location
               </label>
-              <input
-                type="text"
-                value={customEndLocation}
-                onChange={(e) => onEndLocationChange(e.target.value)}
-                placeholder="e.g., Phoenix, AZ"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={customEndLocation}
+                  onChange={(e) => onEndLocationChange(e.target.value)}
+                  placeholder="e.g., Phoenix, AZ"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                />
+                <button
+                  onClick={() => onEndMapSelect && onEndMapSelect()}
+                  className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors"
+                  title="Click on map to select"
+                >
+                  🎯
+                </button>
+              </div>
             </div>
 
             <button
@@ -214,6 +240,31 @@ export function SimulationControls({
                 Fetching real-time weather from OpenMeteo...
               </p>
             )}
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Simulated Traffic Density
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {(['Low', 'Medium', 'High'] as TrafficLevel[]).map((level) => (
+                <button
+                  key={level}
+                  onClick={() => onTrafficDensityChange(level)}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${trafficDensity === level
+                      ? level === 'Low' ? 'bg-green-500 text-white' :
+                        level === 'Medium' ? 'bg-yellow-500 text-white' :
+                          'bg-red-500 text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-gray-500 mt-2 italic">
+              *Traffic impacts travel time and freshness loss.
+            </p>
           </div>
 
           <div>

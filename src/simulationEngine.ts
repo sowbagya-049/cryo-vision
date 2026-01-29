@@ -2,12 +2,11 @@ import {
   Coordinate,
   Route,
   ColdStorage,
-  TruckState,
   RiskAssessment,
-  SystemDecision,
   ProductType,
   TruckStatus,
-  RiskLevel
+  RiskLevel,
+  TrafficLevel
 } from './types';
 
 import { PRODUCT_DATABASE } from './data/productData';
@@ -19,6 +18,18 @@ export const COLD_STORAGES: ColdStorage[] = [
   { id: 'cs1', name: 'Cold Storage A', location: { x: 300, y: 200, label: 'Cold Storage A' } },
   { id: 'cs2', name: 'Cold Storage B', location: { x: 500, y: 400, label: 'Cold Storage B' } },
 ];
+
+
+
+// Simulation bounds
+export const SIM_WIDTH = 800;
+export const SIM_HEIGHT = 600;
+
+// Real world bounds (approximate box covering East Coast US)
+export const LAT_START = 40.7128; // NY
+export const LAT_END = 25.7617;   // Miami
+export const LNG_START = -74.0060; // NY
+export const LNG_END = -80.1918;   // Miami
 
 export const ROUTES: Route[] = [
   {
@@ -113,7 +124,7 @@ export function predictInsideTemperature(
 export function calculateFreshnessLoss(
   predictedInsideTemp: number,
   productType: ProductType,
-  minutesElapsed: number // This represents simulation steps (e.g. 1 minute per step)
+  _minutesElapsed: number // This represents simulation steps (e.g. 1 minute per step)
 ): { freshnessLoss: number; daysLost: number } {
   const profile = PRODUCT_DATABASE[productType];
 
@@ -253,7 +264,7 @@ export function interpolatePosition(
     const pos = route.path[route.path.length - 1];
     return {
       ...pos,
-      geoPosition: mapCoordinatesToGeo(pos.x, pos.y)
+      geoPosition: pos.geoPosition || mapCoordinatesToGeo(pos.x, pos.y)
     };
   }
 
@@ -263,11 +274,22 @@ export function interpolatePosition(
   const x = start.x + (end.x - start.x) * segmentProgress;
   const y = start.y + (end.y - start.y) * segmentProgress;
 
+  // Interpolate geoPosition directly if available for better accuracy
+  let geoPosition = undefined;
+  if (start.geoPosition && end.geoPosition) {
+    geoPosition = {
+      lat: start.geoPosition.lat + (end.geoPosition.lat - start.geoPosition.lat) * segmentProgress,
+      lng: start.geoPosition.lng + (end.geoPosition.lng - start.geoPosition.lng) * segmentProgress,
+    };
+  } else {
+    geoPosition = mapCoordinatesToGeo(x, y);
+  }
+
   return {
     x,
     y,
     label: 'Truck',
-    geoPosition: mapCoordinatesToGeo(x, y)
+    geoPosition
   };
 }
 
@@ -275,16 +297,6 @@ export function interpolatePosition(
 // NY: 40.7128, -74.0060 (Top Left approx)
 // Miami: 25.7617, -80.1918 (Bottom Right approx)
 export function mapCoordinatesToGeo(x: number, y: number): { lat: number; lng: number } {
-  // Simulation bounds
-  const SIM_WIDTH = 800;
-  const SIM_HEIGHT = 600;
-
-  // Real world bounds (approximate box covering East Coast US)
-  const LAT_START = 40.7128; // NY
-  const LAT_END = 25.7617;   // Miami
-  const LNG_START = -74.0060; // NY
-  const LNG_END = -80.1918;   // Miami
-
   // Linear interpolation
   const lat = LAT_START + (y / SIM_HEIGHT) * (LAT_END - LAT_START);
   const lng = LNG_START + (x / SIM_WIDTH) * (LNG_END - LNG_START);
@@ -292,27 +304,122 @@ export function mapCoordinatesToGeo(x: number, y: number): { lat: number; lng: n
   return { lat, lng };
 }
 
-// Generate a route with waypoints between two real-world coordinates
-export function generateCustomRoute(
+// Generate multiple route alternatives between two real-world coordinates using OSRM
+export async function generateRouteAlternatives(
+  startLat: number,
+  startLng: number,
+  endLat: number,
+  endLng: number,
+  productType: ProductType
+): Promise<Route[]> {
+  try {
+    // Fetch alternatives from OSRM
+    const response = await fetch(
+      `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson&alternatives=true`
+    );
+    const data = await response.json();
+
+    if (data.code !== 'Ok') {
+      throw new Error('OSRM routing failed');
+    }
+
+    const routes: Route[] = data.routes.map((routeData: any, index: number) => {
+      const coordinates = routeData.geometry.coordinates;
+      const waypoints: Coordinate[] = coordinates.map((coord: [number, number], wIndex: number) => {
+        const [lng, lat] = coord;
+        const x = ((lng - LNG_START) / (LNG_END - LNG_START)) * SIM_WIDTH;
+        const y = ((lat - LAT_START) / (LAT_END - LAT_START)) * SIM_HEIGHT;
+
+        return {
+          x: Math.max(0, Math.min(SIM_WIDTH, x)),
+          y: Math.max(0, Math.min(SIM_HEIGHT, y)),
+          label: wIndex === 0 ? 'Start' : wIndex === coordinates.length - 1 ? 'Destination' : `Waypoint ${wIndex}`,
+          geoPosition: { lat, lng }
+        };
+      });
+
+      // Simulate traffic level for each route
+      const trafficLevels: TrafficLevel[] = ['Low', 'Medium', 'High'];
+      const trafficLevel = trafficLevels[Math.floor(Math.random() * trafficLevels.length)];
+
+      const distance = Math.round(routeData.distance / 1000);
+      const baseDuration = Math.round(routeData.duration / 60);
+
+      // Adjust duration based on traffic
+      let trafficMultiplier = 1;
+      if (trafficLevel === 'Medium') trafficMultiplier = 1.3;
+      if (trafficLevel === 'High') trafficMultiplier = 1.8;
+
+      const estimatedTime = Math.round(baseDuration * trafficMultiplier);
+
+      // Score the route based on product durability and traffic
+      const score = calculateRouteScore(distance, estimatedTime, trafficLevel, productType);
+
+      return {
+        id: `route-${index}`,
+        name: index === 0 ? 'Primary Route' : `Alternative ${index}`,
+        path: waypoints,
+        distance,
+        estimatedTime,
+        riskZones: trafficLevel === 'High' ? [Math.floor(waypoints.length / 2)] : [],
+        description: `${index === 0 ? 'Fastest' : 'Alternative'} path with ${trafficLevel} traffic.`,
+        trafficLevel,
+        score
+      };
+    });
+
+    // Sort routes by score (highest first)
+    return routes.sort((a, b) => (b.score || 0) - (a.score || 0));
+  } catch (error) {
+    console.error('Error fetching OSRM alternatives:', error);
+    return [];
+  }
+}
+
+// Scoring algorithm for food safety and durability
+export function calculateRouteScore(
+  _distance: number,
+  time: number,
+  traffic: TrafficLevel,
+  productType: ProductType
+): number {
+  const product = PRODUCT_DATABASE[productType];
+  const durability = product.baseShelfLifeDays; // Higher means more durable
+
+  // Weights (0-1)
+  const timeWeight = durability < 7 ? 0.7 : 0.4; // Perishable items care more about time
+  const trafficWeight = 0.3;
+
+  // Normalize values (0-100, higher is better)
+  const timeScore = Math.max(0, 100 - (time / 10)); // Assume 1000 mins is worst
+  const trafficScore = traffic === 'Low' ? 100 : traffic === 'Medium' ? 60 : 20;
+
+  return Math.round((timeScore * timeWeight) + (trafficScore * trafficWeight));
+}
+
+// Legacy function kept for compatibility, now calls generateRouteAlternatives
+export async function generateCustomRoute(
   startLat: number,
   startLng: number,
   endLat: number,
   endLng: number,
   routeName: string = 'Custom Route'
-): Route {
-  const numWaypoints = 5; // Number of intermediate points
-  const waypoints: Coordinate[] = [];
+): Promise<Route> {
+  const alternatives = await generateRouteAlternatives(startLat, startLng, endLat, endLng, 'Tomato');
+  if (alternatives.length > 0) {
+    const best = alternatives[0];
+    return { ...best, name: routeName, id: 'custom-route' };
+  }
 
-  // Generate waypoints by linear interpolation
+  // Fallback (same as before)
+  const numWaypoints = 5;
+  const waypoints: Coordinate[] = [];
   for (let i = 0; i <= numWaypoints; i++) {
     const progress = i / numWaypoints;
     const lat = startLat + (endLat - startLat) * progress;
     const lng = startLng + (endLng - startLng) * progress;
-
-    // Convert to simulation coordinates (reverse of mapCoordinatesToGeo)
     const x = ((lng - startLng) / (endLng - startLng)) * 800;
     const y = ((lat - startLat) / (endLat - startLat)) * 600;
-
     waypoints.push({
       x: Math.max(0, Math.min(800, x)),
       y: Math.max(0, Math.min(600, y)),
@@ -320,24 +427,13 @@ export function generateCustomRoute(
       geoPosition: { lat, lng }
     });
   }
-
-  // Calculate approximate distance (haversine formula)
-  const R = 6371; // Earth radius in km
-  const dLat = (endLat - startLat) * Math.PI / 180;
-  const dLng = (endLng - startLng) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(startLat * Math.PI / 180) * Math.cos(endLat * Math.PI / 180) *
-    Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const distance = R * c;
-
   return {
     id: 'custom-route',
     name: routeName,
     path: waypoints,
-    distance: Math.round(distance),
-    estimatedTime: Math.round(distance / 80 * 60), // Assume 80 km/h average
+    distance: 100,
+    estimatedTime: 120,
     riskZones: [],
-    description: `Custom route from ${waypoints[0].label} to ${waypoints[numWaypoints].label}`
+    description: 'Fallback linear route'
   };
 }

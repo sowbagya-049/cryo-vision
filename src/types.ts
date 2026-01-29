@@ -1,4 +1,5 @@
 export type ProductType = 'Vaccine' | 'Dairy' | 'Frozen Food' | 'Tomato' | 'Banana';
+export type TrafficLevel = 'Low' | 'Medium' | 'High';
 
 export type TruckStatus = 'moving' | 'slow' | 'stopped';
 
@@ -22,6 +23,8 @@ export interface Route {
   estimatedTime: number;
   riskZones: number[];
   description: string;
+  trafficLevel?: TrafficLevel;
+  score?: number;
 }
 
 export interface ColdStorage {
@@ -45,6 +48,7 @@ export interface TruckState {
   coolingMode?: 'Standard' | 'Turbo';
   shelfLifeRemaining?: number; // In days
   thermalExposure?: number; // Cumulative degree-hours above optimal temp
+  trafficDensity?: TrafficLevel;
 }
 
 export interface RiskAssessment {
@@ -78,4 +82,7 @@ export interface RouteComparison {
   estimatedTime: number;
   freshnessLoss: number;
   riskLevel: RiskLevel;
+  estimatedFreshnessAtArrival: number;
+  trafficLevel: TrafficLevel;
+  isRecommended: boolean;
 }

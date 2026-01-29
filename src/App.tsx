@@ -5,23 +5,21 @@ import {
   Analytics as AnalyticsType,
   TruckStatus,
   ProductType,
+  TrafficLevel,
 } from './types';
 import {
   ROUTES,
   WAREHOUSE,
-  DESTINATION,
-  COLD_STORAGES,
   predictInsideTemperature,
   calculateFreshnessLoss,
   evaluateRisk,
   shouldReroute,
   interpolatePosition,
-  generateCustomRoute,
+  generateRouteAlternatives,
 } from './simulationEngine';
 import { fetchCurrentWeather } from './services/weatherService';
 import { geocodeAddress } from './services/geocodingService';
 import { PRODUCT_DATABASE } from './data/productData';
-import { MapView } from './components/MapView';
 import { LiveMap } from './components/LiveMap';
 import { MetricsPanel } from './components/MetricsPanel';
 import { DecisionLog } from './components/DecisionLog';
@@ -36,7 +34,9 @@ function App() {
   const [isLiveWeather, setIsLiveWeather] = useState(false);
   const [customStartLocation, setCustomStartLocation] = useState('');
   const [customEndLocation, setCustomEndLocation] = useState('');
-  const [isCustomRoute, setIsCustomRoute] = useState(false);
+  const [isSelectingLocation, setIsSelectingLocation] = useState(false);
+  const [selectionMode, setSelectionMode] = useState<'start' | 'end' | null>(null);
+  const [trafficDensity, setTrafficDensity] = useState<TrafficLevel>('Low');
 
   const initialTruckState: TruckState = {
     position: WAREHOUSE,
@@ -320,29 +320,36 @@ function App() {
         return;
       }
 
-      // Generate custom route
-      const customRoute = generateCustomRoute(
+      // Generate multiple route alternatives (traffic-aware)
+      const alternatives = await generateRouteAlternatives(
         startGeo.lat,
         startGeo.lng,
         endGeo.lat,
         endGeo.lng,
-        `${customStartLocation} → ${customEndLocation}`
+        truckState.productType
       );
 
-      // Update ROUTES array with custom route
-      ROUTES[0] = customRoute;
+      if (alternatives.length === 0) {
+        alert('Could not find any valid routes between these locations.');
+        return;
+      }
+
+      // Select the best route (highest score)
+      const bestRoute = alternatives[0];
+
+      // Update ROUTES array with the best route
+      ROUTES[0] = bestRoute;
 
       // Reset simulation with new route
       handleReset();
-      setIsCustomRoute(true);
       setIsLiveWeather(true); // Auto-enable live weather for custom routes
 
       setDecisions([{
         timestamp: Date.now(),
-        action: 'Custom Route Set',
-        reason: `Route configured from ${startGeo.displayName} to ${endGeo.displayName}. Distance: ${customRoute.distance} km. Live weather enabled.`,
+        action: 'Optimal Route Selected',
+        reason: `Evaluated ${alternatives.length} alternatives. Selected ${bestRoute.name} with ${bestRoute.trafficLevel} traffic. Score: ${bestRoute.score}/100 based on ${truckState.productType} durability.`,
         previousRoute: 'Default',
-        newRoute: customRoute.name,
+        newRoute: bestRoute.name,
         freshness: 100,
       }]);
 
@@ -350,6 +357,26 @@ function App() {
       console.error('Error setting custom route:', error);
       alert('Error setting custom route. Please try again.');
     }
+  };
+
+  const handleStartMapSelect = () => {
+    setIsSelectingLocation(true);
+    setSelectionMode('start');
+  };
+
+  const handleEndMapSelect = () => {
+    setIsSelectingLocation(true);
+    setSelectionMode('end');
+  };
+
+  const handleLocationSelect = (_lat: number, _lng: number, address: string) => {
+    if (selectionMode === 'start') {
+      setCustomStartLocation(address);
+    } else if (selectionMode === 'end') {
+      setCustomEndLocation(address);
+    }
+    setIsSelectingLocation(false);
+    setSelectionMode(null);
   };
 
   const analytics: AnalyticsType = {
@@ -372,6 +399,9 @@ function App() {
         estimatedTime: route.estimatedTime,
         freshnessLoss: estimatedFreshnessLoss,
         riskLevel: estimatedRisk,
+        estimatedFreshnessAtArrival: 100 - estimatedFreshnessLoss,
+        trafficLevel: route.trafficLevel || 'Low',
+        isRecommended: route.score ? route.score > 70 : false,
       };
     }),
     riskEvents,
@@ -390,6 +420,9 @@ function App() {
               currentPosition={truckState.position}
               route={currentRoute.path}
               destination={currentRoute.path[currentRoute.path.length - 1]}
+              onLocationSelect={handleLocationSelect}
+              isSelectingLocation={isSelectingLocation}
+              selectionMode={selectionMode}
             />
           </div>
           <div>
@@ -438,6 +471,10 @@ function App() {
               onStartLocationChange={setCustomStartLocation}
               onEndLocationChange={setCustomEndLocation}
               onSetCustomRoute={handleSetCustomRoute}
+              onStartMapSelect={handleStartMapSelect}
+              onEndMapSelect={handleEndMapSelect}
+              trafficDensity={trafficDensity}
+              onTrafficDensityChange={setTrafficDensity}
             />
           </div>
         </div>

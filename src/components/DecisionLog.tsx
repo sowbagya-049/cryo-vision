@@ -19,9 +19,9 @@ export function DecisionLog({ decisions }: DecisionLogProps) {
         </div>
       ) : (
         <div className="space-y-3 max-h-96 overflow-y-auto">
-          {decisions.map((decision) => (
+          {decisions.map((decision, index) => (
             <div
-              key={decision.timestamp}
+              key={`${decision.timestamp}-${index}`}
               className="border-l-4 border-purple-500 bg-purple-50 rounded-r-lg p-4 hover:bg-purple-100 transition-colors"
             >
               <div className="flex items-start justify-between mb-2">
